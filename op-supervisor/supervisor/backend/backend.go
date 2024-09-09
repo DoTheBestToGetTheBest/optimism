@@ -41,6 +41,43 @@ var _ frontend.Backend = (*SupervisorBackend)(nil)
 
 var _ io.Closer = (*SupervisorBackend)(nil)
 
+func (su *SupervisorBackend) AddRPC(ctx context.Context, chainID types.ChainID, rpcEndpoint string) error {
+
+	rpcClient, derivedChainID, err := createRpcClient(ctx, su.logger, rpcEndpoint)
+	if err != nil {
+		return err
+	}
+
+	if derivedChainID != chainID {
+		return fmt.Errorf("mismatched chain IDs: derived (%v) does not match expected (%v)", derivedChainID, chainID)
+	}
+
+	if monitor, exists := su.chainMonitors[chainID]; exists {
+
+		monitor.AddRPCClient(rpcClient)
+	} else {
+
+		cm := newChainMetrics(chainID, su.m)
+		path, err := prepLogDBPath(chainID, su.dataDir)
+		if err != nil {
+			return fmt.Errorf("failed to create datadir for chain %v: %w", chainID, err)
+		}
+		logDB, err := logs.NewFromFile(su.logger, cm, path)
+		if err != nil {
+			return fmt.Errorf("failed to create logdb for chain %v at %v: %w", chainID, path, err)
+		}
+
+		monitor, err := source.NewChainMonitor(ctx, su.logger, cm, chainID, rpcEndpoint, rpcClient, su.db)
+		if err != nil {
+			return fmt.Errorf("failed to create new chain monitor for chain ID %v: %w", chainID, err)
+		}
+		su.chainMonitors[chainID] = monitor
+		su.db.AddLogDB(chainID, logDB)
+	}
+
+	return nil
+}
+
 func NewSupervisorBackend(ctx context.Context, logger log.Logger, m Metrics, cfg *config.Config) (*SupervisorBackend, error) {
 	// attempt to prepare the data directory
 	if err := prepDataDir(cfg.Datadir); err != nil {
