@@ -34,6 +34,22 @@ type Storage interface {
 type ChainMonitor struct {
 	log         log.Logger
 	headMonitor *HeadMonitor
+	rpcClients  []client.RPC
+}
+
+func (cm *ChainMonitor) AddRPCClient(rpcClient client.RPC) {
+	cm.rpcClients = append(cm.rpcClients, rpcClient)
+	fmt.Println("Added new RPC client")
+}
+
+func (monitor *ChainMonitor) removeRPCClient(rpcEndpoint client.RPC) error {
+	for i, client := range monitor.rpcClients {
+		if client == rpcEndpoint {
+			monitor.rpcClients = append(monitor.rpcClients[:i], monitor.rpcClients[i+1:]...)
+			return nil
+		}
+	}
+	return fmt.Errorf("RPC client not found: ")
 }
 
 func NewChainMonitor(ctx context.Context, logger log.Logger, m Metrics, chainID types.ChainID, rpc string, client client.RPC, store Storage) (*ChainMonitor, error) {
